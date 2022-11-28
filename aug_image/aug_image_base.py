@@ -4,8 +4,8 @@ import dataclasses
 import cv2
 import numpy as np
 import scipy
-from .utils import get_crop_slices
-from layer import Layer
+from .utils import get_crop_slices, compose
+from .layer import Layer
 
 class AugImageBase:
 
@@ -125,26 +125,26 @@ class AugImageBase:
 
             layer_components.append(component)
             pos = (round(pos[0]), round(pos[1]))  # discretize
-
-            s_x = slice(np.clip(pos[0], 0, full_img.shape[0]),
-                        np.clip(pos[0] + img_slice.shape[0], 0, full_img.shape[0]))
-            s_y = slice(np.clip(pos[1], 0, full_img.shape[1]),
-                        np.clip(pos[1] + img_slice.shape[1], 0, full_img.shape[1]))
-
-            start_x = 0 if pos[0] >= 0 else -pos[0]
-            start_y = 0 if pos[1] >= 0 else -pos[1]
+            s_x, s_y = compose(full_img, img_slice, pos)
+            # s_x = slice(np.clip(pos[0], 0, full_img.shape[0]),
+            #             np.clip(pos[0] + img_slice.shape[0], 0, full_img.shape[0]))
+            # s_y = slice(np.clip(pos[1], 0, full_img.shape[1]),
+            #             np.clip(pos[1] + img_slice.shape[1], 0, full_img.shape[1]))
+            #
+            # start_x = 0 if pos[0] >= 0 else -pos[0]
+            # start_y = 0 if pos[1] >= 0 else -pos[1]
 
             if with_bboxes_drawn:
                 rects.append(((int(pos[1]), int(pos[0])),
                               (int(pos[1] + img_slice.shape[1]), int(pos[0] + img_slice.shape[0]))))
-            # create slice
-            img_slice = img_slice[start_x: start_x + s_x.stop - s_x.start,
-                        start_y: start_y + s_y.stop - s_y.start]
-            non_black = img_slice[:, :, 3] > 0
-
-            # add layer to full image
-            full_img[s_x, s_y][non_black] = img_slice[non_black]
-            img_labels[s_x, s_y][non_black] = label
+            # # create slice
+            # img_slice = img_slice[start_x: start_x + s_x.stop - s_x.start,
+            #             start_y: start_y + s_y.stop - s_y.start]
+            # non_black = img_slice[:, :, 3] > 0
+            #
+            # # add layer to full image
+            # full_img[s_x, s_y][non_black] = img_slice[non_black]
+            img_labels[s_x, s_y][img_slice[:, :, 3] > 0] = label
         if with_bboxes_drawn:
             for rect in rects:
                 cv2.rectangle(full_img, rect[0], rect[1], (255, 255, 255), 3)

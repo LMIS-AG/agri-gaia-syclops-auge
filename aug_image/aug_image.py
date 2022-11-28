@@ -17,11 +17,10 @@ import time
 
 HSV_LIMITS = np.array([179, 255, 255], dtype=np.uint8)
 
-
 class AugImage(AugImageBase):
 
     @classmethod
-    def from_path(cls, path, name, **kwargs):
+    def from_path(cls, path, name, bg_component=0, **kwargs):
         path_main_cam = join(path, "camera_main_camera")
         path_main_cam_ann = join(path, "camera_main_camera_annotations")
 
@@ -31,10 +30,11 @@ class AugImage(AugImageBase):
         path_component = join(path_main_cam_ann, 'semantic_segmentation', name + '.npy')
 
         img = cv2.imread(path_bgr)
+        img_bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
         instances_map = np.load(path_instance)
         components_map = np.load(path_component)
         depths_map = np.load(path_depth)
-        return cls.from_data(img, instances_map, components_map, depths_map, **kwargs)
+        return cls.from_data(img_bgra, instances_map, components_map, depths_map, name, bg_component, **kwargs)
 
     @classmethod
     def from_data(cls, img: np.array, instances_map: np.array, components_map: np.array, depths_map: np.array,
