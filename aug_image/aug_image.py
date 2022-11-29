@@ -1,11 +1,8 @@
 from __future__ import annotations
-
+import logging
 import copy
 import os
-import pickle
-from functools import lru_cache
 from os.path import join
-from random import choices
 
 from numpy.random import choice
 from scipy import ndimage
@@ -42,76 +39,6 @@ class AugImage(AugImageBase):
                   cut_off_value: int = 40) -> AugImage:
         layers = cls.create_layers(img, components_map, instances_map, depths_map, bg_component, min_layer_area)
         return cls(layers, cut_off_value, name_img, img.shape)
-
-    def mixup(self, img: 'AugImage'):
-        """
-        combine AugImages (swap objects)
-        :param img: another AugImage to breed with
-        :return:
-        """
-        # base = np.random.choice([self, img])
-        base = self
-        layers_all = self.layers_draw + img.layers_draw
-        layers_new = copy.deepcopy(base.layers_draw)
-        for i, l in enumerate(layers_new):
-            if l.depth == np.inf:
-                continue
-            layers_all_c = [l_a for l_a in layers_all
-                            if l_a.component == l.component and 0.75 < l_a.img_slice.size / l.img_slice.size < 1.25]
-            chosen = np.random.choice(layers_all_c)
-            l.img_slice = np.copy(chosen.img_slice)
-        return AugImage(layers_new, base.cut_off_value)
-
-    def from_stats(self, stats_path):
-        @lru_cache
-        def draw_hsv(class_id):
-            h_val = choices(np.arange(HSV_LIMITS[0] + 1), stats.colors_h_means[class_id])
-            s_val = choices(np.arange(HSV_LIMITS[1] + 1), stats.colors_s_means[class_id])
-            v_val = choices(np.arange(HSV_LIMITS[2] + 1), stats.colors_v_means[class_id])
-            return np.array([h_val[0], s_val[0], v_val[0]])
-
-        with open(stats_path, 'rb') as f:
-            stats = pickle.load(f)
-
-        component_to_class_id = {99: 0, 3: 3, 2: 2, 1: 1}
-        targets = np.arange(self.nr_layers)
-        scale_range = (0.7, 1.3)
-        rot_range = (-15, 15)
-        shear_range = (-0.3, 0.3)
-        tint_range = (0, 0)
-        rot_degrees, scale_factors, shear_factors, _ = self.generate_rand_params(targets, rot_range, scale_range,
-                                                                                 shear_range,
-                                                                                 tint_range)
-        diffs = []
-        for i, t in enumerate(targets):
-            l_orig = self.layers_orig[t]
-            diffs.append(0)
-            # plt.imshow(cv2.cvtColor(img_slice, cv2.COLOR_HSV2RGB)), plt.show()
-            if l_orig.component == 0.0:  # component 0 seems to be a bug
-                continue
-            class_id = component_to_class_id[l_orig.component]
-            if class_id not in stats.colors_h_means:  # bark (3) gibt es nicht in den Echtdaten todo
-                continue
-            hsv = draw_hsv(class_id)
-            img_slice_hsv = cv2.cvtColor(l_orig.img_slice[:, :, 0:3], cv2.COLOR_BGR2HSV)
-            means = np.mean(img_slice_hsv[l_orig.img_slice[:, :, 3] > 0], axis=0)
-            diff = hsv - means[0:3]
-            self.perform_augmentation(t, tint_color=diff)
-            diffs[-1] = diff
-        yield
-        self.reset()
-        for i, t in enumerate(targets):
-            self.perform_augmentation(t, scale_factors[i], rot_degrees[i], diffs[i], shear_factors[i])
-        yield
-
-        # ### check change
-        # img_slice_bgra_after= self.layers_draw[t][1]
-        # img_slice_hsv_after = cv2.cvtColor(img_slice_bgra_after[:,:,0:3], cv2.COLOR_BGR2HSV)
-        # # plt.imshow(cv2.cvtColor(img_slice, cv2.COLOR_HSV2RGB)), plt.show()
-        # means_after = np.mean(img_slice_hsv_after[img_slice_bgra_after[:, :, 3] > 0], axis=0)
-        # diff_after = np.abs(hsv - means_after[0:3])
-        # if np.sum(diff_after) > 6:
-        #     breakpoint()
 
     def reset(self):
         for target in np.arange(self.nr_layers):
@@ -179,16 +106,10 @@ class AugImage(AugImageBase):
         :param tint_color:
         :return:
         '''
-        # self.a(target)
         # reset drawing layer
         if do_reset_first:
-            print('Achtung reset')
             self.layers_draw[target] = copy.deepcopy(self.layers_orig[target])
-            self.layers_draw[target] = copy.deepcopy(self.layers_orig[target])
-        # cv2.imshow('before', self.layers_draw[target][1])
-        # self.fancy_pca(target)
-        # cv2.imshow('after', self.layers_draw[target][1])
-        # cv2.waitKey()
+
         # perform augmentations
         if scale_factor != 1.:
             self.change_size(target, scale_factor)
@@ -251,7 +172,6 @@ class AugImage(AugImageBase):
         c_h = max(corners_trans_y) - min(corners_trans_y)
         c_v = max(corners_trans_x) - min(corners_trans_x)
 
-        # img_slice[np.all(img_slice == 0, 2)] = 255
         height_out, width_out = int(np.ceil(c_v)), int(np.ceil(c_h))
         sheared_array = ndimage.affine_transform(img_slice,
                                                  np.linalg.inv(transform),
@@ -321,8 +241,6 @@ class AugImage(AugImageBase):
                     img_slice[non_black, 0] += c_uint
                     img_slice[non_black, 0] = img_slice[non_black, 0] % (HSV_LIMITS[0] + 1)
         img_slice_bgra[:, :, 0:3] = cv2.cvtColor(img_slice, cv2.COLOR_HSV2BGR)
-        # self.layers_draw[target][1][:,:,0:3] = cv2.cvtColor(img_slice,cv2.COLOR_HSV2BGR)
-        # self.layers[target][1][non_black, 1::] = np.clip(img_slice[non_black, 1::] + color[1::], 0, 255)
 
     def plot(self, info='', save_path='', do_show=True):
         from matplotlib import pyplot as plt
