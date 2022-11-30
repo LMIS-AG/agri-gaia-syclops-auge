@@ -101,7 +101,7 @@ class AugImageBase:
                                   cv2.INPAINT_NS)
         if do_visualize:
             cv2.imshow('inpaint', img_inpaint)
-            orig = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)
+            orig = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
             orig[fg_mask > 0] *= 0
             cv2.imshow('original', orig)
             cv2.imshow('foreground_mask', fg_mask)

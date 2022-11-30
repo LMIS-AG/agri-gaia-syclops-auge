@@ -62,9 +62,9 @@ class LayerCollection:
             if not l.is_complete:
                 continue
             self.add(l.component, l.img_slice, l.pos)
-            # aug_img.perform_augmentation(i, do_flip=True)
-            # l_new = aug_img.layers_draw[i]
-            # self.add(l_new.component, l_new.img_slice, (l_new.pos[0], aug_img.img_shape[1] - l_new.pos[1]))
+            aug_img.perform_augmentation(i, do_flip=True)
+            l_new = aug_img.layers_draw[i]
+            self.add(l_new.component, l_new.img_slice, (l_new.pos[0], aug_img.img_shape[1] - l_new.pos[1]))
 
     def get_substitute(self, layer: Layer) -> Layer:
         """
