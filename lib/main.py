@@ -12,7 +12,8 @@ from matplotlib import pyplot as plt
 
 from aug_image.aug_image import AugImage
 from layer_collection import LayerCollection
-from
+from syclops_postprocessor.postprocessor_interface import PostprocessorInterface
+
 
 class AugE:
     def __init__(self, output_blender: str, pid:int, poll_interval=1):
