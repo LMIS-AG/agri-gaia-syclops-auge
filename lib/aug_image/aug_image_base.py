@@ -109,13 +109,14 @@ class AugImageBase:
         img_inpaint = cv2.cvtColor(img_inpaint, cv2.COLOR_BGR2BGRA)
         return img_inpaint
 
-    def construct_img(self, with_layer_components=False):
+    def construct_img(self):
         '''
         construct the final image from the layers
         :return:
         '''
         full_img = np.zeros(tuple(self.img_shape))  # same shape as background
-        img_labels = np.zeros((self.img_shape[0], self.img_shape[1]), dtype=np.uint)
+        instances = np.zeros((self.img_shape[0], self.img_shape[1]), dtype=np.uint)
+        semantics = np.zeros((self.img_shape[0], self.img_shape[1]), dtype=np.uint)
         layer_components = []
         for label, layer in enumerate(self.layers_draw):
             pos, img_slice, component = layer.pos, layer.img_slice, layer.component
@@ -123,18 +124,16 @@ class AugImageBase:
             layer_components.append(component)
             pos = (round(pos[0]), round(pos[1]))  # discretize
             s_x, s_y, img_slice = compose(full_img, img_slice, pos)
-            img_labels[s_x, s_y][img_slice[:, :, 3] > 0] = label
-        ret = [full_img, img_labels]
-        if with_layer_components:
-            ret.append(layer_components)
-        return ret
+            instances[s_x, s_y][img_slice[:, :, 3] > 0] = label
+            semantics[s_x, s_y][img_slice[:, :, 3] > 0] = component
+        return full_img, instances, semantics
 
     def add_layer_completeness(self):
         """
         check whether the layers object can be considered complete
         @return:
         """
-        img, img_labels = self.construct_img()
+        img, instances, _ = self.construct_img()
         masks_dilated = []
         for label in range(len(self.layers_draw) - 1, -1, -1):
             l = self.layers_draw[label]
@@ -142,7 +141,7 @@ class AugImageBase:
                 l.is_complete = False
                 continue
 
-            mask = img_labels == label
+            mask = instances == label
             is_incomplete = np.any(mask[0, :]) or np.any(mask[:, 0]) or np.any(mask[:, -1]) or np.any(mask[-1, :])
 
             # check whether object is not occluded by a a closer object

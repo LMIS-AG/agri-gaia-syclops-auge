@@ -41,8 +41,6 @@ class LayerCollection:
 
 
     def add(self, classlabel: int, layer: np.array, pos: np.array):
-        if classlabel != 2:
-            return
         # plt.imshow(cv2.cvtColor(layer, cv2.COLOR_BGRA2RGB))
         # plt.show()
         com = center_of_mass(layer[:, :, 3])
@@ -55,16 +53,18 @@ class LayerCollection:
         # plt.imshow(cv2.cvtColor(pickle.loads(res_get[0][3]), cv2.COLOR_BGRA2RGB))
         # plt.show()
 
-    def add_aug_img(self, aug_img: AugImage):
+    def add_aug_img(self, aug_img: AugImage, n=1):
         with open(os.path.join('temp', f"{aug_img.name_img}.pickle"), "wb") as f:
             pickle.dump(aug_img, f, protocol=pickle.HIGHEST_PROTOCOL)
         for i, l in enumerate(aug_img.layers_draw):
             if not l.is_complete:
                 continue
-            self.add(l.component, l.img_slice, l.pos)
-            aug_img.perform_augmentation(i, do_flip=True)
-            l_new = aug_img.layers_draw[i]
-            self.add(l_new.component, l_new.img_slice, (l_new.pos[0], aug_img.img_shape[1] - l_new.pos[1]))
+            for do_flip in [False, True]:
+                self.add(l.component, l.img_slice, (l.pos[0], aug_img.img_shape[1] - l.pos[1]))
+                for j in range(n):
+                    aug_img.perform_targets_random(np.array([i]), p_flip=do_flip*1)
+                    l_new = aug_img.layers_draw[i]
+                    self.add(l_new.component, l_new.img_slice, (l_new.pos[0], aug_img.img_shape[1] - l_new.pos[1]))
 
     def get_substitute(self, layer: Layer) -> Layer:
         """

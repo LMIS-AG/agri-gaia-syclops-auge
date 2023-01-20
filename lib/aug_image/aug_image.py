@@ -18,13 +18,17 @@ class AugImage(AugImageBase):
 
     @classmethod
     def from_path(cls, path, name, bg_component=0, **kwargs) -> AugImage:
-        path_main_cam = join(path, "camera_main_camera")
-        path_main_cam_ann = join(path, "camera_main_camera_annotations")
 
+        path_main_cam = join(path, "camera_main_camera")
         path_bgr = join(path_main_cam, 'rect', name + '.png')
+        path_main_cam_ann = join(path, "camera_main_camera_annotations")
         path_depth = join(path_main_cam_ann, 'depth', name + '.npy')
         path_instance = join(path_main_cam_ann, 'instance_segmentation', name + '.npy')
         path_component = join(path_main_cam_ann, 'semantic_segmentation', name + '.npy')
+
+        files_found = [os.path.isfile(x) for x in (path_bgr, path_depth, path_instance, path_component)]
+        if not all(files_found):
+            raise FileNotFoundError
 
         img = cv2.imread(path_bgr)
         img_bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)

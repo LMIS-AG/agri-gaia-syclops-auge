@@ -1,4 +1,6 @@
 *.db
 *.pyc
-out/
+lib/out/
 temp/
+*.png
+*.npy
