@@ -15,26 +15,36 @@ from layer_collection import LayerCollection
 from syclops_postprocessor.postprocessor_interface import PostprocessorInterface
 
 
-class AugE:
-    def __init__(self, output_blender: str, pid:int, poll_interval=1):
+class AugE(PostprocessorInterface):
+    def __init__(self, output_blender: str):
         """
         Manage augmentations.
-        @param job_description: job description as given to syclops
-        @param pipe_in: the pipe to read from. communication with other syclops modules
         """
         self.lc = LayerCollection()
         # self.pipe_in = PipeConnection(pipe_in, True, True)
-        self.pid = pid
         self.dir_in = Path(output_blender)
         self.dir_temp = "temp"
         self.dir_out_rgb = os.path.join(self.dir_in, "augmented", "camera_main_camera", "rect")
         self.dir_out_instances = os.path.join(self.dir_in, "augmented", "camera_main_camera_annotations", "instance_segmentation")
         self.dir_out_semantics = os.path.join(self.dir_in, "augmented", "camera_main_camera_annotations", "semantic_segmentation")
         self.dir_in_rgb = os.path.join(self.dir_in, "camera_main_camera", 'rect')
-        self.poll_interval = poll_interval
         os.makedirs(self.dir_out_rgb, exist_ok=True)
         os.makedirs(self.dir_out_instances, exist_ok=True)
         os.makedirs(self.dir_out_semantics, exist_ok=True)
+
+    def process_step(self, step_num: int, step_dict: dict) -> dict:
+        fname =
+        try:
+            self.add_data(fname.split('.')[0])
+            processed.add(fname)
+        except FileNotFoundError:
+            time.sleep(self.poll_interval)
+
+    def process_all_steps(self) -> dict:
+        pass
+
+    def _output_folder_path(self) -> str:
+        pass
 
     def run(self):
         processed = set()
