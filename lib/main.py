@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import pickle
 import shutil
@@ -24,27 +25,26 @@ class AugE(PostprocessorInterface):
         # self.pipe_in = PipeConnection(pipe_in, True, True)
         self.dir_in = Path(output_blender)
         self.dir_temp = "temp"
-        self.dir_out_rgb = os.path.join(self.dir_in, "augmented", "camera_main_camera", "rect")
-        self.dir_out_instances = os.path.join(self.dir_in, "augmented", "camera_main_camera_annotations", "instance_segmentation")
-        self.dir_out_semantics = os.path.join(self.dir_in, "augmented", "camera_main_camera_annotations", "semantic_segmentation")
+        self.dir_out = os.path.join(self.dir_in, "augmented")
+        self.dir_out_rgb = os.path.join(self.dir_out, "camera_main_camera", "rect")
+        self.dir_out_instances = os.path.join(self.dir_out, "camera_main_camera_annotations", "instance_segmentation")
+        self.dir_out_semantics = os.path.join(self.dir_out, "camera_main_camera_annotations", "semantic_segmentation")
         self.dir_in_rgb = os.path.join(self.dir_in, "camera_main_camera", 'rect')
         os.makedirs(self.dir_out_rgb, exist_ok=True)
         os.makedirs(self.dir_out_instances, exist_ok=True)
         os.makedirs(self.dir_out_semantics, exist_ok=True)
 
     def process_step(self, step_num: int, step_dict: dict) -> dict:
-        fname =
-        try:
-            self.add_data(fname.split('.')[0])
-            processed.add(fname)
-        except FileNotFoundError:
-            time.sleep(self.poll_interval)
+        logging.info('in process step')
+        time.sleep(5)
+        raise RuntimeError("hhihi")
 
     def process_all_steps(self) -> dict:
-        pass
+        logging.info('in process all steps')
 
     def _output_folder_path(self) -> str:
-        pass
+        logging.info('in output folder')
+        return self.dir_out
 
     def run(self):
         processed = set()
