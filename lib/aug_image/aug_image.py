@@ -7,12 +7,16 @@ from os.path import join
 from numpy.random import choice
 from scipy import ndimage
 
-from .aug_image_base import AugImageBase
+try:
+    from .aug_image_base import AugImageBase
+except ModuleNotFoundError:
+    from aug_image.aug_image_base import AugImageBase
 import cv2
 import numpy as np
 import time
 
 HSV_LIMITS = np.array([179, 255, 255], dtype=np.uint8)
+
 
 class AugImage(AugImageBase):
 
@@ -48,6 +52,16 @@ class AugImage(AugImageBase):
         for target in np.arange(self.nr_layers):
             self.layers_draw[target] = copy.deepcopy(self.layers_orig[target])
             self.layers_draw[target] = copy.deepcopy(self.layers_orig[target])
+
+    def sd_augment(self):
+        import subprocess
+        for i, l in enumerate(self.layers_draw):
+            img_name = f"{i}.png"
+            cv2.imwrite(img_name, l.img_slice)
+            bashCommand = fr'C:\Users\HEW\miniconda3\envs\ldm\python.exe {os.environ["sd"]} --ckpt C:\Users\HEW\PycharmProjects\stable-diffusion\models\ldm\stable-diffusion-v1\model.ckpt --config C:\Users\HEW\PycharmProjects\stable-diffusion\configs\stable-diffusion\v1-inference.yaml --init-img {img_name} --prompt "hyper realistic" --n_samples 1'
+            process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+            output, error = process.communicate()
+            breakpoint()
 
     def perform_targets_random(self,
                                targets=None,

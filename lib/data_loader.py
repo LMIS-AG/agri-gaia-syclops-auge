@@ -19,8 +19,8 @@ class DataLoader:
         :param p: percentage of data to be used (defaults to 1: all data)
         """
 
-        path_main_cam = join(path, "camera_main_camera")
-        path_main_cam_ann = join(path, "camera_main_camera_annotations")
+        path_main_cam = join(path, "main_camera")
+        path_main_cam_ann = join(path, "main_camera_annotations")
         self.path_pickle = os.path.join(path, 'AugImages')
         self.labels = self.load_labels(join(path, 'labels.txt'))
         self.step_exclude = step_exclude
@@ -47,11 +47,11 @@ class DataLoader:
         names_png = sorted(listdir(self.bgr))
         for i, name_png in enumerate(names_png):
             name_img = name_png.rstrip('.png')
-            name_npy = name_img + '.npy'
+            name_npy = name_img + '.npz'
             bgr = cv2.imread(join(self.bgr, name_png))
-            depth = np.load(join(self.depth, name_npy))
-            instance = np.load(join(self.instance, name_npy))
-            component = np.load(join(self.component, name_npy))
+            depth = np.load(join(self.depth, name_npy))['array']
+            instance = np.load(join(self.instance, name_npy))['array']
+            component = np.load(join(self.component, name_npy))['array']
             yield bgr, depth, instance, component, name_img
 
     def generate_aug_images(self):

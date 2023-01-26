@@ -2,16 +2,12 @@ import copy
 import os
 from datetime import datetime
 
-import scipy
 from tqdm import tqdm
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 
 # from .aug_image import AugImage
-from .utils import Rectangle
-from interface.data_loader import DataLoader
-
+from data_loader import DataLoader
 
 # corners in order: TOP_LEFT, TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_LEFT
 
@@ -50,10 +46,10 @@ class AugImageFactory:
                         continue
                     img_nr = int(aug_img.name_img)
                     candidates = self.complete_layers.get(l.component)
-                    candidates = [c[0] for c in candidates if abs(c[1] - img_nr) < 12]
                     # candidates = [c[0] for c in candidates]
 
                     if candidates:
+                        candidates = [c[0] for c in candidates if abs(c[1] - img_nr) < 12]
                         # scales = [np.sqrt(np.prod(l.img_slice.shape[0:2]) / np.prod(c.img_slice.shape[0:2])) for c in candidates]
                         scales = [np.sqrt(l.size / c.size) for c in candidates]
                         probs = [1 / (np.sqrt(np.sum(np.square(l.pos - c.pos))) + 1) if scale < 2 else 0 for c, scale in zip(candidates, scales)]
@@ -76,7 +72,7 @@ class AugImageFactory:
                             tint_range = (0, 0)
                             p_flip = 0.
                             aug_img_new.perform_targets_random(targets,
-                                                                rot_range=rot_range,
+                                                               rot_range=rot_range,
                                                                shear_range=shear_range,
                                                                tint_range=tint_range,
                                                                p_flip=p_flip,
@@ -93,6 +89,7 @@ class AugImageFactory:
                         # l.size = substitute.size
                         # l.center_of_mass = substitute.center_of_mass
                         # l_orig.img_slice = substitute.img_slice
+                aug_img_new.sd_augment()
                 if do_aug_rand:
                     aug_img_new.perform_targets_random(None,
                                                        rot_range=(0,0),
@@ -142,3 +139,28 @@ class AugImageFactory:
                     new_layers[l_new.component] = [(l_new, img_nr)]
         for lc, layers in new_layers.items():
             complete_layers[lc].extend(layers)
+
+if __name__ == '__main__':
+
+    folder_name = 'factory_' + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    dir_base = os.path.abspath(os.path.join('results', folder_name))
+    print(f'will write to: {dir_base}')
+    dir_imgs_train = os.path.join(dir_base, 'images', 'train')
+    os.makedirs(dir_imgs_train)
+    print(f"created: {dir_imgs_train}")
+    data_loader = DataLoader(r'C:\Users\HEW\Projekte\syclops-dev\output\2023_01_25_15_01_49', step_exclude=0)
+    # data_loader.pickle_dataset_as_aug_images()
+    print('start preparing data')
+    factory = AugImageFactory(data_loader, seed=42)
+    # factory = AugImageFactory(data_loader, seed=42, nr_data_use=38)
+    print('done preparing data')
+    for i, aug_img in enumerate(factory.generate(n=1, p=0., do_aug_rand=True)):
+        # img_orig, labels_orig = aug_img_orig.construct_img()
+        data_loader.pickle_aug_img(os.path.join(dir_base, 'AugImages'), aug_img)
+        img, labels = aug_img.construct_img()
+        # cv2.imwrite(os.path.join(dir_imgs_train, f'{i}_orig.png'), img_orig)
+        cv2.imwrite(os.path.join(dir_imgs_train, f'{i}_aug.png'), img)
+        # cv2.imwrite(os.path.join(dir_imgs_train, f'{i}_labels.png'), np.asarray(labels * (255 / labels.max()), dtype=np.uint8))
+        # fig, (ax1, ax2) = plt.subplots(1, 2)
+        # ax1.imshow(cv2.cvtColor(img_orig, cv2.COLOR_BGRA2RGB)), ax2.imshow(
+        #     cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)), plt.show()
