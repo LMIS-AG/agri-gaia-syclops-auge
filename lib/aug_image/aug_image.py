@@ -4,27 +4,36 @@ import copy
 import os
 from os.path import join
 
+import PIL
 from numpy.random import choice
 from scipy import ndimage
+from matplotlib import pyplot as plt
 
-from .aug_image_base import AugImageBase
+try:
+    from .aug_image_base import AugImageBase
+    from.utils import encode_pil_to_base64, decode_base64_to_image
+except ModuleNotFoundError:
+    from aug_image.aug_image_base import AugImageBase
+    from aug_image.utils import encode_pil_to_base64, decode_base64_to_image
+
 import cv2
 import numpy as np
 import time
 
 HSV_LIMITS = np.array([179, 255, 255], dtype=np.uint8)
 
+
 class AugImage(AugImageBase):
 
     @classmethod
-    def from_path(cls, path, name, bg_component=0, **kwargs) -> AugImage:
+    def from_path(cls, path, step_num, step_dict, bg_component=0, **kwargs) -> AugImage:
 
-        path_main_cam = join(path, "camera_main_camera")
-        path_bgr = join(path_main_cam, 'rect', name + '.png')
-        path_main_cam_ann = join(path, "camera_main_camera_annotations")
-        path_depth = join(path_main_cam_ann, 'depth', name + '.npy')
-        path_instance = join(path_main_cam_ann, 'instance_segmentation', name + '.npy')
-        path_component = join(path_main_cam_ann, 'semantic_segmentation', name + '.npy')
+        path_main_cam = join(path, "main_camera")
+        path_bgr = join(path_main_cam, 'rect', step_dict['main_cam_rgb'][0]['path'])
+        path_main_cam_ann = join(path, "main_camera_annotations")
+        path_depth = join(path_main_cam_ann, 'depth', step_dict['main_cam_depth'][0]['path'])
+        path_instance = join(path_main_cam_ann, 'instance_segmentation', step_dict['main_cam_instance'][0]['path'])
+        path_component = join(path_main_cam_ann, 'semantic_segmentation', step_dict['main_cam_semantic'][0]['path'])
 
         files_found = [os.path.isfile(x) for x in (path_bgr, path_depth, path_instance, path_component)]
         if not all(files_found):
@@ -32,10 +41,10 @@ class AugImage(AugImageBase):
 
         img = cv2.imread(path_bgr)
         img_bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
-        instances_map = np.load(path_instance)
-        components_map = np.load(path_component)
-        depths_map = np.load(path_depth)
-        return cls.from_data(img_bgra, instances_map, components_map, depths_map, name, bg_component, **kwargs)
+        instances_map = np.load(path_instance)['array']
+        components_map = np.load(path_component)['array']
+        depths_map = np.load(path_depth)['array']
+        return cls.from_data(img_bgra, instances_map, components_map, depths_map, str(step_num), bg_component, **kwargs)
 
     @classmethod
     def from_data(cls, img: np.array, instances_map: np.array, components_map: np.array, depths_map: np.array,
@@ -48,6 +57,110 @@ class AugImage(AugImageBase):
         for target in np.arange(self.nr_layers):
             self.layers_draw[target] = copy.deepcopy(self.layers_orig[target])
             self.layers_draw[target] = copy.deepcopy(self.layers_orig[target])
+
+
+    def sd_augment(self):
+        import requests as requests
+        def make_grid(self, images_rgb, margin_full=200):
+            assert margin_full % 2 == 0
+            margin = margin_full // 2
+
+            def split_at_n(widths, heights, n):
+                borders = np.cumsum(widths)
+                target_width = borders[-1] / (n + 1)
+                split_indices = [np.argmin(np.abs(borders - target_width * i)) + 1 for i in range(1, n + 1)]
+                grid_widths = []
+                grid_heights = []
+                for i, si in enumerate(split_indices):
+                    start = split_indices[i - 1] if i > 0 else 0
+                    grid_heights.append(np.max(heights[start: si]))
+                    grid_widths.append(np.sum(widths[start: si]))
+                grid_widths.append(np.sum(widths[split_indices[-1]::]))
+                grid_heights.append(np.max(heights[split_indices[-1]::]))
+                return np.max(grid_widths), grid_heights, split_indices
+
+            widths = [img.shape[1] + margin_full for img in images_rgb]
+            heights = [img.shape[0] + margin_full for img in images_rgb]
+            width, grid_heights, split_indices = split_at_n(widths, heights, n=int(np.sqrt(len(images_rgb))) - 1)
+            rows = []
+            # for i, (si, h) in enumerate(zip(split_indices, grid_heights[0:-1])):
+            grid = np.zeros((np.sum(grid_heights), width, 3), dtype=np.uint8)
+            slices = []
+            last_h = 0
+            for i, h in enumerate(grid_heights):
+                # row = np.zeros((h, width, 3), dtype=np.uint8)
+                start = split_indices[i - 1] if i > 0 else 0
+                stop = split_indices[i] if i < len(split_indices) else len(images_rgb)
+                last_w = 0
+                for img in images_rgb[start: stop]:
+                    slice_h = slice(last_h + margin, img.shape[0] + last_h + margin)
+                    slice_w = slice(last_w + margin, img.shape[1] + last_w + margin)
+                    grid[slice_h, slice_w] = img
+                    last_w += img.shape[1] + margin_full
+                    slices.append((slice_h, slice_w))
+                last_h += h
+            return grid, slices
+
+        layer_grid = []
+        images_grid = []
+        grid_size = 9
+
+        layers, images = [], []
+        for i, l in enumerate(self.layers_draw):
+            img = l.img_slice
+            if img.shape[0] * img.shape[1] < 10000 or l.component != 2:
+                continue
+            layers.append(l)
+            mask = img[:,:,3] == 0
+            img[mask] *=0
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+            images.append(img_rgb)
+            if len(layers) == grid_size:
+                layer_grid.append(layers)
+                images_grid.append(images)
+                layers, images = [], []
+                # cv2.imshow('sdf', img_rgb)
+                # cv2.waitKey()
+
+        for images, layers in zip(images_grid, layer_grid):
+            grid, slices = self.make_grid(images)
+            image = PIL.Image.fromarray(grid)
+            image_enc = encode_pil_to_base64(image)
+            # images.append(image_enc)
+
+            payload = {'init_images': [image_enc],
+                       'prompt': '9 plants in a grid on black background. '
+                                 'plants are very detailed and have imperfections. 4k.',
+                       'negative_prompt': 'low resolution. pixelated.',
+                       'denoising_strength': 0.4,
+                       'cfg_scale': 7,
+                       'batch_size': 1}
+            response = requests.post(url='http://127.0.0.1:7860/sdapi/v1/img2img', json=payload)
+            image_response = decode_base64_to_image(response.json()['images'][0])
+            image_response_rgb = np.array(image_response)
+            image_response_hsv = cv2.cvtColor(image_response_rgb, cv2.COLOR_RGB2HSV)
+            image_response = cv2.cvtColor(image_response_rgb, cv2.COLOR_RGB2BGRA)
+            image_response[:,:,3][image_response_hsv[:,:,2] < 50] = 0
+            image_response = cv2.resize(image_response, (grid.shape[1], grid.shape[0]))
+            plt.imshow(grid)
+            plt.show()
+            plt.imshow(image_response_rgb)
+            plt.show()
+            for i, l in enumerate(layers):
+                img_slice = image_response[slices[i]]
+                l.img_slice = img_slice
+
+        # cv2.imshow('sdf', image_response)
+        # cv2.waitKey()
+
+        # for i, l in enumerate(layers_used):
+        #     image_response = decode_base64_to_image(response.json()['images'][i])
+        #     image_response = cv2.cvtColor(np.array(image_response), cv2.COLOR_RGB2BGRA)
+        #     image_response = cv2.resize(image_response, (img.shape[1], img.shape[0]))
+        #     image_response[:,:,3][np.sum(image_response[:,:,0:3], -1) < 100] = 0
+        #     # cv2.imshow('sdf', image_response)
+        #     # cv2.waitKey()
+        #     l.img_slice = image_response
 
     def perform_targets_random(self,
                                targets=None,

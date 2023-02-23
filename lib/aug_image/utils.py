@@ -1,4 +1,9 @@
 # Created by HEW at 18.05.2021
+import base64
+import io
+from http.client import HTTPException
+
+from PIL import Image, PngImagePlugin
 import numpy as np
 
 def get_crop_slices(mask):
@@ -45,3 +50,42 @@ def compose(img_target: np.array, img_slice: np.array, pos_in: tuple, is_center_
         img_target[s_x, s_y, 3] = (1 - (transparency_target * transparency)) * 255
 
     return s_x, s_y, img_slice
+
+def encode_pil_to_base64(image, format='png'):
+    with io.BytesIO() as output_bytes:
+
+        if format == 'png':
+            use_metadata = False
+            metadata = PngImagePlugin.PngInfo()
+            for key, value in image.info.items():
+                if isinstance(key, str) and isinstance(value, str):
+                    metadata.add_text(key, value)
+                    use_metadata = True
+            image.save(output_bytes, format="PNG", pnginfo=(metadata if use_metadata else None))
+
+        elif format in ("jpg", "jpeg", "webp"):
+            parameters = image.info.get('parameters', None)
+            exif_bytes = piexif.dump({
+                "Exif": { piexif.ExifIFD.UserComment: piexif.helper.UserComment.dump(parameters or "", encoding="unicode") }
+            })
+            if format in ("jpg", "jpeg"):
+                image.save(output_bytes, format="JPEG", exif = exif_bytes, quality=opts.jpeg_quality)
+            else:
+                image.save(output_bytes, format="WEBP", exif = exif_bytes, quality=opts.jpeg_quality)
+
+        else:
+            raise HTTPException(status_code=500, detail="Invalid image format")
+
+        bytes_data = output_bytes.getvalue()
+
+    return base64.b64encode(bytes_data)
+
+def decode_base64_to_image(encoding):
+    if encoding.startswith("data:image/"):
+        encoding = encoding.split(";")[1].split(",")[1]
+    try:
+        image = Image.open(io.BytesIO(base64.b64decode(encoding)))
+        return image
+    except Exception as err:
+        raise HTTPException(status_code=500, detail="Invalid encoded image")
+
