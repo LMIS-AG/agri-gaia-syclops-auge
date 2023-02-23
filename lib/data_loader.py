@@ -76,7 +76,7 @@ class DataLoader:
                                              component,
                                              depth,
                                              name_img,
-                                             bg_component=99)
+                                             bg_component=99, min_layer_area=0.0)
                 yield aug_img
 
     @staticmethod

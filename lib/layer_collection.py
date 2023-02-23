@@ -6,9 +6,12 @@ from os.path import join
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
-
-from aug_image.aug_image import AugImage
-from aug_image.layer import Layer
+try:
+    from aug_image.aug_image import AugImage
+    from aug_image.layer import Layer
+except ModuleNotFoundError:
+    from syclops_auge.aug_image.aug_image import AugImage
+    from syclops_auge.aug_image.layer import Layer
 from scipy.ndimage import center_of_mass
 
 
@@ -53,8 +56,8 @@ class LayerCollection:
         # plt.imshow(cv2.cvtColor(pickle.loads(res_get[0][3]), cv2.COLOR_BGRA2RGB))
         # plt.show()
 
-    def add_aug_img(self, aug_img: AugImage, n=1):
-        with open(os.path.join('temp', f"{aug_img.name_img}.pickle"), "wb") as f:
+    def add_aug_img(self, aug_img: AugImage, dir_temp: str, n=1):
+        with open(os.path.join(dir_temp, f"{aug_img.name_img}.pickle"), "wb") as f:
             pickle.dump(aug_img, f, protocol=pickle.HIGHEST_PROTOCOL)
         for i, l in enumerate(aug_img.layers_draw):
             if not l.is_complete:
