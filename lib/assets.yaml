@@ -1,0 +1,9 @@
+name: Postprocessing
+description: Scene creation plugins, basic sensors and ouputs
+
+assets:
+  Auge:
+    type: output
+    tags: [augmentation]
+    license: GPL
+    filepath: auge.py

@@ -26,18 +26,11 @@ HSV_LIMITS = np.array([179, 255, 255], dtype=np.uint8)
 class AugImage(AugImageBase):
 
     @classmethod
-    def from_path(cls, path, step_num, step_dict, bg_component=0, **kwargs) -> AugImage:
-
-        path_main_cam = join(path, "main_camera")
-        path_bgr = join(path_main_cam, 'rect', step_dict['main_cam_rgb'][0]['path'])
-        path_main_cam_ann = join(path, "main_camera_annotations")
-        path_depth = join(path_main_cam_ann, 'depth', step_dict['main_cam_depth'][0]['path'])
-        path_instance = join(path_main_cam_ann, 'instance_segmentation', step_dict['main_cam_instance'][0]['path'])
-        path_component = join(path_main_cam_ann, 'semantic_segmentation', step_dict['main_cam_semantic'][0]['path'])
+    def from_path(cls, step_num, bg_component,
+                  path_bgr, path_depth, path_instance, path_component, **kwargs) -> AugImage:
 
         files_found = [os.path.isfile(x) for x in (path_bgr, path_depth, path_instance, path_component)]
-        if not all(files_found):
-            raise FileNotFoundError
+        assert all(files_found), 'files missing'
 
         img = cv2.imread(path_bgr)
         img_bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
@@ -49,9 +42,9 @@ class AugImage(AugImageBase):
     @classmethod
     def from_data(cls, img: np.array, instances_map: np.array, components_map: np.array, depths_map: np.array,
                   name_img: str, bg_component: int, min_layer_area: float = 0.0002,
-                  cut_off_value: int = 40) -> AugImage:
-        layers = cls.create_layers(img, components_map, instances_map, depths_map, bg_component, min_layer_area)
-        return cls(layers, cut_off_value, name_img, img.shape)
+                  cut_off_value: int = 40, use_sd:bool = False) -> AugImage:
+        layers = cls.create_layers(img, components_map, instances_map, depths_map, bg_component, min_layer_area, use_sd)
+        return cls(layers, cut_off_value, name_img, img.shape, use_sd)
 
     def reset(self):
         for target in np.arange(self.nr_layers):
