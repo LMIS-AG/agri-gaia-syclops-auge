@@ -32,7 +32,6 @@ class AugE(PostprocessorInterface):
         Manage augmentations.
         """
         super().__init__(output_blender)
-        self.lc = LayerCollection()
         self.bg_class = output_blender['bg_class']
         self.use_sd = output_blender['use_sd']
         self.dir_temp = "temp"
@@ -56,7 +55,8 @@ class AugE(PostprocessorInterface):
         return parsed
 
     def _prepare(self):
-        '''overwrite to setup paths'''
+        '''overwrite to setup paths and create Layer Collection'''
+        self.lc = LayerCollection()
         parsed = self.parse_paths(self.input_metadata)
         for meta_type, path in parsed.items():
             path_in = os.path.dirname(path)
@@ -74,16 +74,25 @@ class AugE(PostprocessorInterface):
                 self.path_depth_in, self.path_depth_out = path_in, path_out
 
     def process_all_steps(self) -> dict:
-        self.finalize()
+        return self.finalize()
 
-    def process_step(self, step_num: int, step_dict: dict):
+    def process_step(self, step_num: int, step_dict: dict) -> dict:
         parsed = self.parse_paths(step_dict, key=0)
         path_bgr = os.path.join(self.path_color_in, parsed['RGB'][0])
         path_depth = os.path.join(self.path_depth_in, parsed['DEPTH'][0])
         path_instance = os.path.join(self.path_instance_in, parsed['INSTANCE_SEGMENTATION'][0])
         path_semantic = os.path.join(self.path_semantic_in, parsed['SEMANTIC_SEGMENTATION'][0])
         aug_img = AugImage.from_path(step_num, self.bg_class, path_bgr, path_depth, path_instance, path_semantic)
-        self.lc.add_aug_img(aug_img, self.dir_temp)
+
+        path_temp = os.path.join(self.dir_temp, f"{step_num}.pickle")
+        with open(path_temp, "wb") as f:
+            pickle.dump(aug_img, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        self.lc.add_aug_img(aug_img)
+
+        output_step_dict = {step_num: [{"type": "TEMP",
+                                        "path": path_temp}]}
+        return output_step_dict
 
     def _output_folder_path(self) -> str:
         return os.path.join(self.config['parent_dir'], "augmented")
@@ -93,8 +102,10 @@ class AugE(PostprocessorInterface):
         @param p_use:
         @return:
         """
+        output_step_dict = {}
         # generate new data
         for fname in os.listdir(self.dir_temp):
+            step_num = int(fname.rstrip('.pickle'))
             with open(os.path.join(self.dir_temp, fname), 'rb') as f:
                 aug_img = pickle.load(f)
 
@@ -112,11 +123,23 @@ class AugE(PostprocessorInterface):
             bgr, instances, semantics = aug_img.construct_img()
 
             # output data
-            cv2.imwrite(os.path.join(self.path_color_out, f'{aug_img.name_img}.png'), bgr)
-            np.save(os.path.join(self.path_instance_out, f'{aug_img.name_img}.npy'), instances)
-            np.save(os.path.join(self.path_semantic_out, f'{aug_img.name_img}.npy'), semantics)
+            path_color = os.path.join(self.path_color_out, f'{aug_img.name_img}.png')
+            path_instance = os.path.join(self.path_instance_out, f'{aug_img.name_img}.npy')
+            path_semantic = os.path.join(self.path_semantic_out, f'{aug_img.name_img}.npy')
+            cv2.imwrite(path_color, bgr)
+            np.save(path_instance, instances)
+            np.save(path_semantic, semantics)
+
+            output_step_dict[step_num] = [{"type": "RGB",
+                                           "path": path_color},
+                                          {"type": "INSTANCE_SEGMENTATION",
+                                           "path": path_instance},
+                                          {"type": "SEMANTIC_SEGMENTATION",
+                                           "path": path_semantic}]
 
         self.reset()
+
+        return output_step_dict
 
     def reset(self):
         # empty temp folder

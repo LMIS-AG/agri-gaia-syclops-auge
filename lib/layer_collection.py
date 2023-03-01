@@ -56,9 +56,7 @@ class LayerCollection:
         # plt.imshow(cv2.cvtColor(pickle.loads(res_get[0][3]), cv2.COLOR_BGRA2RGB))
         # plt.show()
 
-    def add_aug_img(self, aug_img: AugImage, dir_temp: str, n=1):
-        with open(os.path.join(dir_temp, f"{aug_img.name_img}.pickle"), "wb") as f:
-            pickle.dump(aug_img, f, protocol=pickle.HIGHEST_PROTOCOL)
+    def add_aug_img(self, aug_img: AugImage, n=1):
         for i, l in enumerate(aug_img.layers_draw):
             if not l.is_complete:
                 continue
