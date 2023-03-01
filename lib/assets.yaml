@@ -1,4 +1,4 @@
-name: Postprocessing
+name: Augmentation
 description: Scene creation plugins, basic sensors and ouputs
 
 assets:
