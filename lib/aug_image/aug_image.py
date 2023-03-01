@@ -26,8 +26,7 @@ HSV_LIMITS = np.array([179, 255, 255], dtype=np.uint8)
 class AugImage(AugImageBase):
 
     @classmethod
-    def from_path(cls, step_num, bg_component,
-                  path_bgr, path_depth, path_instance, path_component, **kwargs) -> AugImage:
+    def from_path(cls, path_bgr, path_depth, path_instance, path_component, **kwargs) -> AugImage:
 
         files_found = [os.path.isfile(x) for x in (path_bgr, path_depth, path_instance, path_component)]
         assert all(files_found), 'files missing'
@@ -37,14 +36,14 @@ class AugImage(AugImageBase):
         instances_map = np.load(path_instance)['array']
         components_map = np.load(path_component)['array']
         depths_map = np.load(path_depth)['array']
-        return cls.from_data(img_bgra, instances_map, components_map, depths_map, str(step_num), bg_component, **kwargs)
+        return cls.from_data(img_bgra, instances_map, components_map, depths_map, **kwargs)
 
     @classmethod
     def from_data(cls, img: np.array, instances_map: np.array, components_map: np.array, depths_map: np.array,
                   name_img: str, bg_component: int, min_layer_area: float = 0.0002,
                   cut_off_value: int = 40, use_sd:bool = False) -> AugImage:
         layers = cls.create_layers(img, components_map, instances_map, depths_map, bg_component, min_layer_area, use_sd)
-        return cls(layers, cut_off_value, name_img, img.shape, use_sd)
+        return cls(layers, cut_off_value, name_img, img.shape)
 
     def reset(self):
         for target in np.arange(self.nr_layers):

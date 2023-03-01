@@ -1,11 +1,8 @@
-import os
 import pickle
 import sqlite3 as sl
 from os.path import join
 
-import cv2
 import numpy as np
-from matplotlib import pyplot as plt
 try:
     from aug_image.aug_image import AugImage
     from aug_image.layer import Layer
@@ -40,21 +37,15 @@ class LayerCollection:
                         pos_y REAL);""")
         except sl.OperationalError:
             print(f"table {table_name} already exists, no new table created")
-        # self.con.row_factory = self.dict_factory
 
 
     def add(self, classlabel: int, layer: np.array, pos: np.array):
-        # plt.imshow(cv2.cvtColor(layer, cv2.COLOR_BGRA2RGB))
-        # plt.show()
         com = center_of_mass(layer[:, :, 3])
         with self.con:
             res = self.con.execute("INSERT INTO LAYERS(classlabel, pixel_size, layer, com_x, com_y, pos_x, pos_y) "
                              "VALUES(?,?,?,?,?,?,?)",
-                             (classlabel, layer.size, layer.dumps(), com[0], com[1], pos[0], pos[1]))
+                             (int(classlabel), layer.size, layer.dumps(), com[0], com[1], pos[0], pos[1]))
 
-            # res_get = self.con.execute(f"SELECT * FROM LAYERS WHERE classlabel={classlabel} AND pixel_size={layer.size}").fetchall()
-        # plt.imshow(cv2.cvtColor(pickle.loads(res_get[0][3]), cv2.COLOR_BGRA2RGB))
-        # plt.show()
 
     def add_aug_img(self, aug_img: AugImage, n=1):
         for i, l in enumerate(aug_img.layers_draw):
@@ -73,7 +64,7 @@ class LayerCollection:
         @param layer: layer to substituted
         @return: layer substitute
         """
-        candidates = self.con.execute(f"SELECT * FROM LAYERS WHERE classlabel={layer.component}").fetchall()
+        candidates = self.con.execute(f"SELECT * FROM LAYERS WHERE classlabel={int(layer.component)}").fetchall()
                                # f" AND pixel_size > {layer.size / 2} AND pixel_size < {layer.size * 2}").fetchall()
         if candidates:
             probs = [1 / (np.sqrt(np.sum(np.square(layer.pos - np.array([c[6], c[7]])))) + 1) for c in candidates]
@@ -84,28 +75,3 @@ class LayerCollection:
         else:
             return layer
 
-    def get(self, classlabel):
-        # con = sl.connect(":memory:")
-        # self.con.row_factory = self.dict_factory
-        # cur = self.con.cursor()
-        # cur.execute("select 1 as a")
-        # cur.fetchone()["a"]
-        res = self.con.execute(f"SELECT * FROM LAYERS WHERE classlabel='{classlabel}'").fetchall()
-        for d in res:
-            d['layer'] = pickle.loads(d['layer'])
-        return res
-
-    @staticmethod
-    def dict_factory(cursor, row):
-        d = {}
-        for idx, col in enumerate(cursor.description):
-            d[col[0]] = row[idx]
-        return d
-
-
-if __name__ == '__main__':
-    r1d = np.random.randn(100, 200, 4)
-    lc = LayerCollection()
-    lc.add('test', r1d, np.array([-3, 4.05]))
-    res = lc.get('test')
-    print(res)

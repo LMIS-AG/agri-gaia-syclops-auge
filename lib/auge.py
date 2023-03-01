@@ -33,7 +33,7 @@ class AugE(PostprocessorInterface):
         """
         super().__init__(output_blender)
         self.bg_class = output_blender['bg_class']
-        self.use_sd = output_blender['use_sd']
+        self.use_sd = output_blender['use_sd'] if 'use_sd' in output_blender else False
         self.dir_temp = "temp"
         os.makedirs(self.dir_temp, exist_ok=True)
 
@@ -82,7 +82,8 @@ class AugE(PostprocessorInterface):
         path_depth = os.path.join(self.path_depth_in, parsed['DEPTH'][0])
         path_instance = os.path.join(self.path_instance_in, parsed['INSTANCE_SEGMENTATION'][0])
         path_semantic = os.path.join(self.path_semantic_in, parsed['SEMANTIC_SEGMENTATION'][0])
-        aug_img = AugImage.from_path(step_num, self.bg_class, path_bgr, path_depth, path_instance, path_semantic)
+        aug_img = AugImage.from_path(path_bgr, path_depth, path_instance, path_semantic,
+                                     name_img=str(step_num), bg_component=self.bg_class, use_sd=self.use_sd)
 
         path_temp = os.path.join(self.dir_temp, f"{step_num}.pickle")
         with open(path_temp, "wb") as f:

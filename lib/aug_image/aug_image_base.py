@@ -10,13 +10,12 @@ import PIL
 
 class AugImageBase:
 
-    def __init__(self, layers: list[Layer], cut_off_value: int, name_img: str, img_shape: np.array, use_sd:bool):
+    def __init__(self, layers: list[Layer], cut_off_value: int, name_img: str, img_shape: np.array):
         """
 
         :param layers: list of Layer elements
         :param cut_off_value:
         :param name_img: name of the image created from
-        :param use_sd: use stable diffusion
         """
         layers.sort(key=lambda l: l.depth, reverse=True)  # sort by depth (rendering order)
         self.layers_draw: list[Layer] = layers
