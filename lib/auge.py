@@ -22,8 +22,6 @@ class AugE(PostprocessorInterface):
         "description": "Augmentations of the output."
     }
 
-
-
     def __init__(self, output_blender: str):
         """
         Manage augmentations.
@@ -34,48 +32,31 @@ class AugE(PostprocessorInterface):
         self.dir_temp = "temp"
         os.makedirs(self.dir_temp, exist_ok=True)
 
-    @classmethod
-    def parse_paths(cls, input: dict, key,
-                    expected_types=['RGB', 'INSTANCE_SEGMENTATION', 'SEMANTIC_SEGMENTATION', 'DEPTH']):
-        parsed = {}
-        expected_types_copy = [x for x in expected_types]
-        for meta in input.values():
-            meta_type = meta[key]['type']
-            if meta_type not in expected_types_copy:
-                continue
-            expected_types_copy.remove(meta_type)
-            if isinstance(meta, list):
-                parsed[meta_type] = [x['path'] for x in meta]
-            else:
-                parsed[meta_type] = meta['path']
-        assert len(expected_types_copy) == 0, "could not gather all neccessary output paths"
-        return parsed
-
     def _prepare(self):
         '''overwrite to setup paths and create Layer Collection'''
         self.lc = LayerCollection()
-        parsed = self.parse_paths(self.input_metadata, key='metadata')
-        for meta_type, path in parsed.items():
-            path_in = os.path.dirname(path)
+        paths = self.get_base_paths_by_type()
+        for meta_type, path_in in paths.items():
+            # path_in = os.path.dirname(path)
             path_rel = os.path.relpath(path_in, self.config['parent_dir'])
             path_out = os.path.join(self.output_folder, path_rel)
             os.makedirs(path_out)
 
             if meta_type == 'RGB':
-                self.path_color_in, self.path_color_out = path_in, path_out
+                self.path_color_out = path_out
             elif meta_type == 'INSTANCE_SEGMENTATION':
-                self.path_instance_in, self.path_instance_out = path_in, path_out
+                self.path_instance_out = path_out
             elif meta_type == 'SEMANTIC_SEGMENTATION':
-                self.path_semantic_in, self.path_semantic_out = path_in, path_out
+                self.path_semantic_out = path_out
             elif meta_type == 'DEPTH':
-                self.path_depth_in, self.path_depth_out = path_in, path_out
+                self.path_depth_out = path_out
 
     def process_step(self, step_num: int, step_dict: dict) -> dict:
-        parsed = self.parse_paths(step_dict, key=0)
-        path_bgr = os.path.join(self.path_color_in, parsed['RGB'][0])
-        path_depth = os.path.join(self.path_depth_in, parsed['DEPTH'][0])
-        path_instance = os.path.join(self.path_instance_in, parsed['INSTANCE_SEGMENTATION'][0])
-        path_semantic = os.path.join(self.path_semantic_in, parsed['SEMANTIC_SEGMENTATION'][0])
+        paths = self.get_full_paths_from_step_dict(step_dict)
+        path_bgr = paths['RGB'][0]
+        path_depth = paths['DEPTH'][0]
+        path_instance = paths['INSTANCE_SEGMENTATION'][0]
+        path_semantic = paths['SEMANTIC_SEGMENTATION'][0]
         aug_img = AugImage.from_path(path_bgr, path_depth, path_instance, path_semantic,
                                      name_img=str(step_num), bg_component=self.bg_class, use_sd=self.use_sd)
 
