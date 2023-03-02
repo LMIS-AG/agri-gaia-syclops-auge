@@ -1,14 +1,9 @@
-import argparse
-import logging
 import os
 import pickle
 import shutil
-import time
-from pathlib import Path
 
 import cv2
 import numpy as np
-from matplotlib import pyplot as plt
 from syclops_postprocessor.postprocessor_interface import PostprocessorInterface
 
 try:
