@@ -22,6 +22,8 @@ class AugE(PostprocessorInterface):
         "description": "Augmentations of the output."
     }
 
+
+
     def __init__(self, output_blender: str):
         """
         Manage augmentations.
@@ -33,7 +35,7 @@ class AugE(PostprocessorInterface):
         os.makedirs(self.dir_temp, exist_ok=True)
 
     @classmethod
-    def parse_paths(cls, input: dict, key='metadata',
+    def parse_paths(cls, input: dict, key,
                     expected_types=['RGB', 'INSTANCE_SEGMENTATION', 'SEMANTIC_SEGMENTATION', 'DEPTH']):
         parsed = {}
         expected_types_copy = [x for x in expected_types]
@@ -52,7 +54,7 @@ class AugE(PostprocessorInterface):
     def _prepare(self):
         '''overwrite to setup paths and create Layer Collection'''
         self.lc = LayerCollection()
-        parsed = self.parse_paths(self.input_metadata)
+        parsed = self.parse_paths(self.input_metadata, key='metadata')
         for meta_type, path in parsed.items():
             path_in = os.path.dirname(path)
             path_rel = os.path.relpath(path_in, self.config['parent_dir'])
@@ -67,9 +69,6 @@ class AugE(PostprocessorInterface):
                 self.path_semantic_in, self.path_semantic_out = path_in, path_out
             elif meta_type == 'DEPTH':
                 self.path_depth_in, self.path_depth_out = path_in, path_out
-
-    def process_all_steps(self) -> dict:
-        return self.finalize()
 
     def process_step(self, step_num: int, step_dict: dict) -> dict:
         parsed = self.parse_paths(step_dict, key=0)
@@ -93,12 +92,25 @@ class AugE(PostprocessorInterface):
     def _output_folder_path(self) -> str:
         return os.path.join(self.config['parent_dir'], "augmented")
 
-    def finalize(self, p_use=1):
-        """
-        @param p_use:
-        @return:
-        """
+
+    def process_all_steps(self) -> dict:
         output_step_dict = {}
+        for step_num, path_color, path_instance, path_semantic in self.generate_new_data():
+            output_step_dict[step_num] = [{"type": "RGB",
+                                           "path": path_color},
+                                          {"type": "INSTANCE_SEGMENTATION",
+                                           "path": path_instance},
+                                          {"type": "SEMANTIC_SEGMENTATION",
+                                           "path": path_semantic}]
+
+        self.reset()
+        return output_step_dict
+
+    def generate_new_data(self, p_use=1):
+        '''
+        generate new data and yield paths
+        @return: paths to ne datapoints
+        '''
         # generate new data
         for fname in os.listdir(self.dir_temp):
             step_num = int(fname.rstrip('.pickle'))
@@ -125,20 +137,12 @@ class AugE(PostprocessorInterface):
             cv2.imwrite(path_color, bgr)
             np.save(path_instance, instances)
             np.save(path_semantic, semantics)
-
-            output_step_dict[step_num] = [{"type": "RGB",
-                                           "path": path_color},
-                                          {"type": "INSTANCE_SEGMENTATION",
-                                           "path": path_instance},
-                                          {"type": "SEMANTIC_SEGMENTATION",
-                                           "path": path_semantic}]
-
-        self.reset()
-
-        return output_step_dict
+            yield step_num, path_color, path_instance, path_semantic
 
     def reset(self):
-        # empty temp folder
+        """
+        clear the temp folder
+        """
         for filename in os.listdir(self.dir_temp):
             file_path = os.path.join(self.dir_temp, filename)
             try:
