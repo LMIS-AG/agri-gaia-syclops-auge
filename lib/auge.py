@@ -12,8 +12,10 @@ except ModuleNotFoundError:
     from syclops_auge.layer_collection import LayerCollection
 try:
     from aug_image.aug_image import AugImage
+    from util import is_installed, run
 except ModuleNotFoundError:
     from syclops_auge.aug_image.aug_image import AugImage
+    from syclops_auge.util import is_installed, run
 
 
 class AugE(PostprocessorInterface):
@@ -27,8 +29,18 @@ class AugE(PostprocessorInterface):
         Manage augmentations.
         """
         super().__init__(output_blender)
-        self.bg_class = output_blender['bg_class']
-        self.use_sd = output_blender['use_sd'] if 'use_sd' in output_blender else False
+        self.sd_downscale = output_blender['sd_downscale']
+        self.sd_inpaint = output_blender['sd_inpaint']
+        if self.sd_inpaint:
+            if not is_installed('torch') or not is_installed("torchvision"):
+                torch_command = os.environ.get('TORCH_COMMAND',
+                                               "pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117")
+
+                run(torch_command)
+            if not is_installed('diffusers') or not is_installed("transformers"):
+                command = "pip install diffusers[torch] transformers"
+                run(command)
+
         self.dir_temp = "temp"
         os.makedirs(self.dir_temp, exist_ok=True)
 
@@ -57,14 +69,15 @@ class AugE(PostprocessorInterface):
         path_depth = paths['DEPTH'][0]
         path_instance = paths['INSTANCE_SEGMENTATION'][0]
         path_semantic = paths['SEMANTIC_SEGMENTATION'][0]
-        aug_img = AugImage.from_path(path_bgr, path_depth, path_instance, path_semantic,
-                                     name_img=str(step_num), bg_component=self.bg_class, use_sd=self.use_sd)
+
+        aug_img = AugImage.from_path(path_bgr, path_depth, path_instance, path_semantic, name_img=str(step_num),
+                                     bg_classes=self.config['bg_classes'], sd_inpaint=self.sd_inpaint, sd_downscale=self.sd_downscale)
 
         path_temp = os.path.join(self.dir_temp, f"{step_num}.pickle")
         with open(path_temp, "wb") as f:
             pickle.dump(aug_img, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        self.lc.add_aug_img(aug_img)
+        self.lc.add_aug_img(aug_img, self.config)
 
         output_step_dict = {step_num: [{"type": "TEMP",
                                         "path": path_temp}]}
@@ -72,7 +85,6 @@ class AugE(PostprocessorInterface):
 
     def _output_folder_path(self) -> str:
         return os.path.join(self.config['parent_dir'], "augmented")
-
 
     def process_all_steps(self) -> dict:
         output_step_dict = {}
@@ -133,4 +145,3 @@ class AugE(PostprocessorInterface):
                     shutil.rmtree(file_path)
             except Exception as e:
                 print('Failed to delete %s. Reason: %s' % (file_path, e))
-

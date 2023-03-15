@@ -30,14 +30,14 @@ class AugImageBase:
 
     @classmethod
     def create_layers(cls, img: np.array, components_map: np.array, instances_map: np.array, depths_map: np.array,
-                      bg_component: int, min_layer_area: float, use_sd: bool) -> list[Layer]:
+                      bg_classes: list[int], min_layer_area: float, sd_inpaint: bool, sd_downscale: float) -> list[Layer]:
         """
         create layers
         @param img:
         @param components_map:
         @param instances_map:
         @param depths_map:
-        @param bg_component:
+        @param bg_classes:
         @param min_layer_area:
         @return:
         """
@@ -61,6 +61,11 @@ class AugImageBase:
                 layer.depth = np.inf
             return layer
 
+        # simplify all background components to one
+        bg_component = bg_classes[0]
+        for bg_class in bg_classes[1::]:
+            components_map[components_map == bg_class] = bg_component
+
         # calculate absolute min layer size and treat smaller layers as background
         min_layer_size = img.shape[0] * img.shape[1] * min_layer_area
         unique, counts = np.unique(instances_map, return_counts=True)
@@ -69,8 +74,9 @@ class AugImageBase:
         components_map[mask_remove] = bg_component
 
         # create background via inpainting
-        if use_sd:
-            img_inpaint = cls.inpaint_sd(img, components_map, bg_component, do_visualize=False)
+        if sd_inpaint:
+            img_inpaint = cls.inpaint_sd(img, components_map, bg_component, sd_downscale_factor=sd_downscale,
+                                         do_visualize=False)
         else:
             img_inpaint = cls.create_inpaint_background(img, components_map, bg_component, do_visualize=False)
 
@@ -164,34 +170,51 @@ class AugImageBase:
             self.layers_orig[label].is_complete = not is_incomplete
 
     @classmethod
-    def inpaint_sd(self, img: np.array, components_map: np.array, bg_class: int, k_size=5, do_visualize: bool = False) -> np.array:
+    def inpaint_sd(self, img: np.array, components_map: np.array, bg_class: int, k_size=9, do_visualize: bool = False,
+                   sd_downscale_factor: float = 1) -> np.array:
+        import torch
+        from PIL import Image
+        from diffusers import StableDiffusionInpaintPipeline
+
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
-        image = PIL.Image.fromarray(img_rgb)
-        image_enc = str(encode_pil_to_base64(image), 'utf8')
+        shape = [int(img_rgb.shape[1] // sd_downscale_factor),
+                 int(img_rgb.shape[0] // sd_downscale_factor)]
+        # height and width have to be divisible by 8
+        shape[0] -= shape[0] % 8
+        shape[1] -= shape[1] % 8
+
+        init_image = PIL.Image.fromarray(img_rgb).resize(shape)
+
         fg_mask = np.array(components_map != bg_class, dtype=np.uint8) * 255
         kernel = np.ones((k_size, k_size), np.uint8)
         fg_mask = cv2.dilate(fg_mask, kernel, iterations=1)
-        fg_mask = PIL.Image.fromarray(fg_mask)
-        fg_mask_enc = str(encode_pil_to_base64(fg_mask), 'utf8')
-        payload = {'init_images': [image_enc],
-                   "mask": fg_mask_enc,
-                   "mask_blur": 0,
-                   'inpainting_fill': 1,
-                   "inpaint_full_res": True,
-                   "inpaint_full_res_padding": 8,
-                   "inpainting_mask_invert": 0,
-                   'denoising_strength': 1,
-                   "steps": 20,
-                   "cfg_scale": 0,}
+        fg_mask = PIL.Image.fromarray(fg_mask).resize(shape)
 
-        response = requests.post(url='http://127.0.0.1:7860/sdapi/v1/img2img', json=payload)
-        image_response = decode_base64_to_image(response.json()['images'][0])
-        image_response_rgb = np.array(image_response)
+        # load the pipeline
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting",
+            torch_dtype=torch.float16,
+            safety_checker=None
+        )
+        pipe = pipe.to("cuda")
+        pipe.enable_attention_slicing()  # to save some gpu memory in exchange for a small speed decrease
+
+        image = pipe(prompt="",
+                     negative_prompt="",
+                     image=init_image,
+                     mask_image=fg_mask,
+                     guidance_scale=0.,
+                     height=shape[1],
+                     width=shape[0],
+                     num_inference_steps=20
+                     ).images[0]
+
+        image = image.resize((img_rgb.shape[1], img_rgb.shape[0]))
+        image_response_rgb = np.array(image)
         image_response = cv2.cvtColor(image_response_rgb, cv2.COLOR_RGB2BGRA)
+
         if do_visualize:
             cv2.imshow('img', img)
             cv2.imshow('img_response', image_response)
             cv2.waitKey()
         return image_response
-
-

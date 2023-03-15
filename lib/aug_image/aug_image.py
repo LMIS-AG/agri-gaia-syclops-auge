@@ -40,9 +40,9 @@ class AugImage(AugImageBase):
 
     @classmethod
     def from_data(cls, img: np.array, instances_map: np.array, components_map: np.array, depths_map: np.array,
-                  name_img: str, bg_component: int, min_layer_area: float = 0.0002,
-                  cut_off_value: int = 40, use_sd:bool = False) -> AugImage:
-        layers = cls.create_layers(img, components_map, instances_map, depths_map, bg_component, min_layer_area, use_sd)
+                  name_img: str, bg_classes: list[int], min_layer_area: float = 0.0002,
+                  cut_off_value: int = 40, sd_inpaint:bool = False, sd_downscale:float=2.) -> AugImage:
+        layers = cls.create_layers(img, components_map, instances_map, depths_map, bg_classes, min_layer_area, sd_inpaint, sd_downscale)
         return cls(layers, cut_off_value, name_img, img.shape)
 
     def reset(self):
@@ -50,13 +50,11 @@ class AugImage(AugImageBase):
             self.layers_draw[target] = copy.deepcopy(self.layers_orig[target])
             self.layers_draw[target] = copy.deepcopy(self.layers_orig[target])
 
-
-    def sd_augment(self):
+    def sd_augment(self, target_classes=[2], thresh_v=50):
         import requests as requests
-        def make_grid(self, images_rgb, margin_full=200):
+        def make_grid(images, margin_full=200):
             assert margin_full % 2 == 0
             margin = margin_full // 2
-
             def split_at_n(widths, heights, n):
                 borders = np.cumsum(widths)
                 target_width = borders[-1] / (n + 1)
@@ -71,20 +69,19 @@ class AugImage(AugImageBase):
                 grid_heights.append(np.max(heights[split_indices[-1]::]))
                 return np.max(grid_widths), grid_heights, split_indices
 
-            widths = [img.shape[1] + margin_full for img in images_rgb]
-            heights = [img.shape[0] + margin_full for img in images_rgb]
-            width, grid_heights, split_indices = split_at_n(widths, heights, n=int(np.sqrt(len(images_rgb))) - 1)
-            rows = []
+            widths = [img.shape[1] + margin_full for img in images]
+            heights = [img.shape[0] + margin_full for img in images]
+            width, grid_heights, split_indices = split_at_n(widths, heights, n=max(1, int(np.sqrt(len(images))) - 1))
             # for i, (si, h) in enumerate(zip(split_indices, grid_heights[0:-1])):
-            grid = np.zeros((np.sum(grid_heights), width, 3), dtype=np.uint8)
+            grid = np.zeros((np.sum(grid_heights), width, images[0].shape[2]), dtype=np.uint8)
             slices = []
             last_h = 0
             for i, h in enumerate(grid_heights):
                 # row = np.zeros((h, width, 3), dtype=np.uint8)
                 start = split_indices[i - 1] if i > 0 else 0
-                stop = split_indices[i] if i < len(split_indices) else len(images_rgb)
+                stop = split_indices[i] if i < len(split_indices) else len(images)
                 last_w = 0
-                for img in images_rgb[start: stop]:
+                for img in images[start: stop]:
                     slice_h = slice(last_h + margin, img.shape[0] + last_h + margin)
                     slice_w = slice(last_w + margin, img.shape[1] + last_w + margin)
                     grid[slice_h, slice_w] = img
@@ -93,73 +90,64 @@ class AugImage(AugImageBase):
                 last_h += h
             return grid, slices
 
+
+
         layer_grid = []
         images_grid = []
         grid_size = 9
 
         layers, images = [], []
-        for i, l in enumerate(self.layers_draw):
+        layers_relevant = [l for l in self.layers_draw if l.component in target_classes]
+        for i, l in enumerate(layers_relevant):
             img = l.img_slice
-            if img.shape[0] * img.shape[1] < 10000 or l.component != 2:
-                continue
             layers.append(l)
             mask = img[:,:,3] == 0
             img[mask] *=0
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
-            images.append(img_rgb)
-            if len(layers) == grid_size:
+            img_rgba = cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA)
+            images.append(img_rgba)
+            if len(layers) == grid_size or i == len(layers_relevant)-1:
                 layer_grid.append(layers)
                 images_grid.append(images)
                 layers, images = [], []
-                # cv2.imshow('sdf', img_rgb)
-                # cv2.waitKey()
 
         for images, layers in zip(images_grid, layer_grid):
-            grid, slices = self.make_grid(images)
-            image = PIL.Image.fromarray(grid)
-            image_enc = encode_pil_to_base64(image)
-            # images.append(image_enc)
-
+            grid, slices = make_grid(images, margin_full=50)
+            image = PIL.Image.fromarray(cv2.cvtColor(grid, cv2.COLOR_RGBA2RGB))
+            image_enc = str(encode_pil_to_base64(image), 'utf8')
+            fg_mask = np.array((grid[:,:,3]>0) * 255, dtype=np.uint8)
+            fg_mask_enc = str(encode_pil_to_base64(PIL.Image.fromarray(fg_mask)), 'utf8')
             payload = {'init_images': [image_enc],
-                       'prompt': '9 plants in a grid on black background. '
-                                 'plants are very detailed and have imperfections. 4k.',
-                       'negative_prompt': 'low resolution. pixelated.',
-                       'denoising_strength': 0.4,
-                       'cfg_scale': 7,
-                       'batch_size': 1}
+                        "steps": 50,
+                       #'prompt': '<lora:rust_disease:1>',
+                       'prompt': '<lora:rust_disease_new:1>',
+                       'denoising_strength': 0.5,
+                       'cfg_scale': 10,
+                       'batch_size': 1,
+                        "mask": fg_mask_enc,
+                        "mask_blur": 0,
+                        'inpainting_fill': 1,
+                        "inpaint_full_res": True,
+                        "inpaint_full_res_padding": 8,
+                        "inpainting_mask_invert": 0,
+                       }
             response = requests.post(url='http://127.0.0.1:7860/sdapi/v1/img2img', json=payload)
             image_response = decode_base64_to_image(response.json()['images'][0])
             image_response_rgb = np.array(image_response)
             image_response_hsv = cv2.cvtColor(image_response_rgb, cv2.COLOR_RGB2HSV)
             image_response = cv2.cvtColor(image_response_rgb, cv2.COLOR_RGB2BGRA)
-            image_response[:,:,3][image_response_hsv[:,:,2] < 50] = 0
+            image_response[:,:,3][image_response_hsv[:,:,2] < thresh_v] = 0
             image_response = cv2.resize(image_response, (grid.shape[1], grid.shape[0]))
-            plt.imshow(grid)
-            plt.show()
-            plt.imshow(image_response_rgb)
-            plt.show()
             for i, l in enumerate(layers):
                 img_slice = image_response[slices[i]]
                 l.img_slice = img_slice
 
-        # cv2.imshow('sdf', image_response)
-        # cv2.waitKey()
-
-        # for i, l in enumerate(layers_used):
-        #     image_response = decode_base64_to_image(response.json()['images'][i])
-        #     image_response = cv2.cvtColor(np.array(image_response), cv2.COLOR_RGB2BGRA)
-        #     image_response = cv2.resize(image_response, (img.shape[1], img.shape[0]))
-        #     image_response[:,:,3][np.sum(image_response[:,:,0:3], -1) < 100] = 0
-        #     # cv2.imshow('sdf', image_response)
-        #     # cv2.waitKey()
-        #     l.img_slice = image_response
 
     def perform_targets_random(self,
                                targets=None,
-                               scale_range=(0.8, 1.2),
-                               rot_range=(-9, 9),
-                               shear_range=(-0.3, 0.3),
-                               tint_range=(-10, 10),
+                               scale_range=(1, 1),
+                               rot_range=(0, 0),
+                               shear_range=(0, 0),
+                               tint_range=(0, 0),
                                p_flip=0.,
                                do_reset_first=True):
         '''

@@ -3,6 +3,7 @@ import sqlite3 as sl
 from os.path import join
 
 import numpy as np
+
 try:
     from aug_image.aug_image import AugImage
     from aug_image.layer import Layer
@@ -38,23 +39,26 @@ class LayerCollection:
         except sl.OperationalError:
             print(f"table {table_name} already exists, no new table created")
 
-
     def add(self, classlabel: int, layer: np.array, pos: np.array):
         com = center_of_mass(layer[:, :, 3])
         with self.con:
             res = self.con.execute("INSERT INTO LAYERS(classlabel, pixel_size, layer, com_x, com_y, pos_x, pos_y) "
-                             "VALUES(?,?,?,?,?,?,?)",
-                             (int(classlabel), layer.size, layer.dumps(), com[0], com[1], pos[0], pos[1]))
+                                   "VALUES(?,?,?,?,?,?,?)",
+                                   (int(classlabel), layer.size, layer.dumps(), com[0], com[1], pos[0], pos[1]))
 
+    def add_aug_img(self, aug_img: AugImage, config: dict, n=1):
 
-    def add_aug_img(self, aug_img: AugImage, n=1):
-        for i, l in enumerate(aug_img.layers_draw):
-            if not l.is_complete:
-                continue
-            for do_flip in [False, True]:
-                self.add(l.component, l.img_slice, (l.pos[0], aug_img.img_shape[1] - l.pos[1]))
-                for j in range(n):
-                    aug_img.perform_targets_random(np.array([i]), p_flip=do_flip*1)
+        # if config['stable_diffusion']['sd_rust_disease']:
+        #     aug_img.sd_augment(config['target_classes'])
+
+        targets = [(i, l) for i, l in enumerate(aug_img.layers_draw) if l.is_complete]
+        for _, l in targets:
+            self.add(l.component, l.img_slice, (l.pos[0], aug_img.img_shape[1] - l.pos[1]))
+        target_indices = [i for i, _ in targets]
+        for do_flip in [False, True]:
+            for _ in range(n):
+                aug_img.perform_targets_random(np.array(target_indices), p_flip=do_flip * 1)
+                for i in target_indices:
                     l_new = aug_img.layers_draw[i]
                     self.add(l_new.component, l_new.img_slice, (l_new.pos[0], aug_img.img_shape[1] - l_new.pos[1]))
 
@@ -65,7 +69,7 @@ class LayerCollection:
         @return: layer substitute
         """
         candidates = self.con.execute(f"SELECT * FROM LAYERS WHERE classlabel={int(layer.component)}").fetchall()
-                               # f" AND pixel_size > {layer.size / 2} AND pixel_size < {layer.size * 2}").fetchall()
+        # f" AND pixel_size > {layer.size / 2} AND pixel_size < {layer.size * 2}").fetchall()
         if candidates:
             probs = [1 / (np.sqrt(np.sum(np.square(layer.pos - np.array([c[6], c[7]])))) + 1) for c in candidates]
             chosen_idx = np.random.choice(range(len(candidates)), p=probs / np.sum(probs))
