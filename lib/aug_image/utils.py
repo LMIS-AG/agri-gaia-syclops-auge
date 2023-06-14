@@ -3,6 +3,7 @@ import base64
 import io
 from http.client import HTTPException
 
+import cv2
 from PIL import Image, PngImagePlugin
 import numpy as np
 
@@ -14,7 +15,8 @@ def get_crop_slices(mask):
     return slice_x, slice_y
 
 
-def compose(img_target: np.array, img_slice: np.array, pos_in: tuple, is_center_pos: bool = False, alpha_scale=1):
+def compose(img_target: np.array, img_slice: np.array, pos_in: tuple, is_center_pos: bool = False, alpha_scale=1,
+            blend=1):
     """
     perform compositing. Insert img_slice into full_img
     @param img_target: the target image used for insertion
@@ -22,8 +24,13 @@ def compose(img_target: np.array, img_slice: np.array, pos_in: tuple, is_center_
     @param pos_in: position at which to insert the slice
     @param is_center_pos: whether pos denotes the center or the top left point
     @param alpha_scale: scale alpha value when adding
+    @param blend: kernel size for blurring on alpha channel before composing. 1 for no blending.
     @return: slices of bounding box of edited area in full_img
     """
+    alpha_blur = cv2.GaussianBlur(img_slice[:, :, 3], (blend, blend), 0)
+    alpha_blur[img_slice[:, :, 3] == 0] = 0  # only erode the mask
+    img_slice[:, :, 3] = alpha_blur
+
     pos = (pos_in[0] - img_slice.shape[0] // 2,
            pos_in[1] - img_slice.shape[1] // 2) if is_center_pos else pos_in
 
@@ -40,7 +47,7 @@ def compose(img_target: np.array, img_slice: np.array, pos_in: tuple, is_center_
                 start_y: start_y + s_y.stop - s_y.start]
 
     # add layer to full image
-    transparency = 1 - (alpha_scale * img_slice[:, :, 3] / 255 )
+    transparency = 1 - (alpha_scale * img_slice[:, :, 3] / 255)
     img_target[s_x, s_y, 0] = img_target[s_x, s_y, 0] * transparency + img_slice[:, :, 0] * (1 - transparency)
     img_target[s_x, s_y, 1] = img_target[s_x, s_y, 1] * transparency + img_slice[:, :, 1] * (1 - transparency)
     img_target[s_x, s_y, 2] = img_target[s_x, s_y, 2] * transparency + img_slice[:, :, 2] * (1 - transparency)
